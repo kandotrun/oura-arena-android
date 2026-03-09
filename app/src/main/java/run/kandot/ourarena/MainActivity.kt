@@ -36,6 +36,11 @@ class MainActivity : ComponentActivity() {
         HealthPermission.getReadPermission(TotalCaloriesBurnedRecord::class),
         HealthPermission.getReadPermission(OxygenSaturationRecord::class),
         HealthPermission.getReadPermission(RestingHeartRateRecord::class),
+        HealthPermission.getReadPermission(DistanceRecord::class),
+        HealthPermission.getReadPermission(WeightRecord::class),
+        HealthPermission.getReadPermission(HeightRecord::class),
+        HealthPermission.getReadPermission(ExerciseSessionRecord::class),
+        HealthPermission.getReadPermission(RespiratoryRateRecord::class),
     )
 
     private var permissionStatus: ((String) -> Unit)? = null
@@ -158,7 +163,63 @@ fun OuraArenaScreen(onRequestPermissions: (onStatusUpdate: (String) -> Unit) -> 
                 Text("Health Connect の権限を許可する")
             }
 
-            // 手動同期ボタン
+            // 全期間同期ボタン
+            OutlinedButton(
+                onClick = {
+                    scope.launch {
+                        if (serverUrl.isBlank() || apiKey.isBlank()) {
+                            status = "⚠️ サーバーURLとAPIキーを設定してください"
+                            return@launch
+                        }
+                        isSyncing = true
+                        val lastSync2 = prefs.getString("last_sync_day", null)
+                        status = if (lastSync2 != null) "差分同期中（${lastSync2}以降）..." else "全期間同期中..."
+                        try {
+                            val reader = HealthReader(context)
+                            val data = reader.readAllData(lastSync2)
+                            val daysCount = data.optInt("days_count", 0)
+
+                            val client = OkHttpClient.Builder()
+                                .connectTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+                                .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+                                .writeTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+                                .build()
+                            val body = data.toString()
+                                .toRequestBody("application/json".toMediaType())
+                            val request = Request.Builder()
+                                .url("$serverUrl/api/submit")
+                                .header("Authorization", "Bearer $apiKey")
+                                .post(body)
+                                .build()
+
+                            val response = client.newCall(request).execute()
+                            if (response.isSuccessful) {
+                                val nowStr = java.time.LocalDateTime.now()
+                                    .format(java.time.format.DateTimeFormatter.ofPattern("MM/dd HH:mm"))
+                                val todayStr = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE)
+                                lastSync = nowStr
+                                prefs.edit()
+                                    .putString("last_sync", nowStr)
+                                    .putString("last_sync_day", todayStr)
+                                    .apply()
+                                status = "✅ 全期間同期完了！（${daysCount}日分）"
+                            } else {
+                                status = "❌ 送信失敗: ${response.code}"
+                            }
+                        } catch (e: Exception) {
+                            val msg = e.message ?: e.javaClass.simpleName
+                            status = "❌ エラー: $msg"
+                        }
+                        isSyncing = false
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isSyncing
+            ) {
+                Text("全期間データを同期")
+            }
+
+            // 手動同期ボタン（今日のみ）
             Button(
                 onClick = {
                     scope.launch {
