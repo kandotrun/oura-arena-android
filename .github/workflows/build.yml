@@ -1,4 +1,4 @@
-name: APKビルド
+name: APKビルド & リリース
 
 on:
   push:
@@ -9,6 +9,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: JDK 17セットアップ
         uses: actions/setup-java@v4
@@ -19,11 +21,54 @@ jobs:
       - name: Gradleセットアップ
         uses: gradle/actions/setup-gradle@v4
 
+      - name: バージョン番号を生成
+        id: version
+        run: |
+          # コミット数からバージョンコードを生成
+          COMMIT_COUNT=$(git rev-list --count HEAD)
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          VERSION="1.0.${COMMIT_COUNT}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "version_code=${COMMIT_COUNT}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "バージョン: ${VERSION} (${COMMIT_COUNT}) [${SHORT_SHA}]"
+
+      - name: バージョンコードを更新
+        run: |
+          sed -i "s/versionCode = 1/versionCode = ${{ steps.version.outputs.version_code }}/" app/build.gradle.kts
+          sed -i "s/versionName = \"1.0\"/versionName = \"${{ steps.version.outputs.version }}\"/" app/build.gradle.kts
+
       - name: APKビルド
         run: ./gradlew assembleDebug
+
+      - name: APKをリネーム
+        run: |
+          mv app/build/outputs/apk/debug/app-debug.apk \
+             app/build/outputs/apk/debug/oura-arena-v${{ steps.version.outputs.version }}.apk
 
       - name: APKをアーティファクトとしてアップロード
         uses: actions/upload-artifact@v4
         with:
           name: oura-arena-sync
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: app/build/outputs/apk/debug/oura-arena-v${{ steps.version.outputs.version }}.apk
+
+      - name: リリースを作成
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
+          body: |
+            ## Oura Arena Sync v${{ steps.version.outputs.version }}
+
+            コミット: ${{ steps.version.outputs.short_sha }}
+
+            ### 変更内容
+            ${{ github.event.head_commit.message }}
+
+            ### インストール方法
+            1. 下の `oura-arena-v${{ steps.version.outputs.version }}.apk` をダウンロード
+            2. Androidで開いてインストール（提供元不明アプリを許可）
+            3. アプリを開いてHealth Connectの権限を許可
+            4. サーバーURL・APIキーを設定して同期
+          files: app/build/outputs/apk/debug/oura-arena-v${{ steps.version.outputs.version }}.apk
+          generate_release_notes: true
