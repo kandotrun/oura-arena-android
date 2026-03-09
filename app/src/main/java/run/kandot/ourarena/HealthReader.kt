@@ -258,7 +258,7 @@ class HealthReader(private val context: Context) {
                 )
             )
             if (heightResponse.records.isNotEmpty()) {
-                json.put("height_cm", heightResponse.records.last().height.inCentimeters)
+                json.put("height_cm", heightResponse.records.last().height.inMeters * 100)
             }
         } catch (e: Exception) { e.printStackTrace() }
 
