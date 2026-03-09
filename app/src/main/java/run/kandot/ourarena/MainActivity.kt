@@ -38,10 +38,20 @@ class MainActivity : ComponentActivity() {
         HealthPermission.getReadPermission(RestingHeartRateRecord::class),
     )
 
+    private var permissionStatus: ((String) -> Unit)? = null
+
     private val requestPermissions = registerForActivityResult(
         PermissionController.createRequestPermissionResultContract()
     ) { granted ->
-        // パーミッション結果
+        val total = permissions.size
+        val count = granted.size
+        if (count == total) {
+            permissionStatus?.invoke("✅ 全${total}件の権限が許可されました")
+        } else if (count > 0) {
+            permissionStatus?.invoke("⚠️ ${count}/${total}件の権限が許可されました（一部不足）")
+        } else {
+            permissionStatus?.invoke("❌ 権限が許可されませんでした")
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -50,7 +60,10 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 OuraArenaScreen(
-                    onRequestPermissions = { requestPermissions.launch(permissions) }
+                    onRequestPermissions = { onStatusUpdate ->
+                        permissionStatus = onStatusUpdate
+                        requestPermissions.launch(permissions)
+                    }
                 )
             }
         }
@@ -59,7 +72,7 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun OuraArenaScreen(onRequestPermissions: () -> Unit) {
+fun OuraArenaScreen(onRequestPermissions: (onStatusUpdate: (String) -> Unit) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val prefs = context.getSharedPreferences("oura_arena", Context.MODE_PRIVATE)
@@ -139,7 +152,7 @@ fun OuraArenaScreen(onRequestPermissions: () -> Unit) {
 
             // Health Connect パーミッション
             Button(
-                onClick = onRequestPermissions,
+                onClick = { onRequestPermissions { msg -> status = msg } },
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Health Connect の権限を許可する")
