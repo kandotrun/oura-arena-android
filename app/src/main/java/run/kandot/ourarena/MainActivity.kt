@@ -179,7 +179,19 @@ fun OuraArenaScreen(onRequestPermissions: () -> Unit) {
                                 status = "❌ 送信失敗: ${response.code}"
                             }
                         } catch (e: Exception) {
-                            status = "❌ エラー: ${e.message}"
+                            val msg = e.message ?: e.javaClass.simpleName
+                            status = when {
+                                e is java.lang.SecurityException || msg.contains("permission", true) ->
+                                    "❌ Health Connectの権限がありません。上のボタンから許可してください"
+                                e is IllegalStateException && msg.contains("not available", true) ->
+                                    "❌ Health Connectがインストールされていません"
+                                e is java.net.UnknownHostException ->
+                                    "❌ ネットワークエラー: インターネットに接続してください"
+                                e is java.net.SocketTimeoutException ->
+                                    "❌ タイムアウト: サーバーに接続できません"
+                                else ->
+                                    "❌ エラー: $msg (${e.javaClass.simpleName})"
+                            }
                         }
                         isSyncing = false
                     }
